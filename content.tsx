@@ -77,7 +77,7 @@ function getGameContext(): GameContext {
   const path = window.location.pathname
   if (path.startsWith("/play/online") || path.startsWith("/game/live"))   return "live"
   if (path.startsWith("/play/computer"))                                   return "computer"
-  if (path.startsWith("/puzzles"))                                         return "puzzle"
+  if (path.startsWith("/puzzles") || path.includes("puzzle"))              return "puzzle"
   if (path.startsWith("/analysis") || path.startsWith("/game/archive"))   return "analysis"
   if (path === "/" || path.startsWith("/home"))                            return "home"
   return "unknown"
@@ -234,7 +234,7 @@ export function detectActiveColorGeometric(
   return { turn: fallbackResult, reliable: false }
 }
 
-function getHeuristicCastling(boardArr: (string | null)[][]): string {
+export function getHeuristicCastling(boardArr: (string | null)[][]): string {
   let castling = ""
   // White rights (assuming rank 1 is at index 7)
   if (boardArr[7][4] === "K") {
@@ -262,8 +262,44 @@ function boardToFenRows(board: (string | null)[][], activeColor: "w" | "b", cast
     if (empty > 0) fenRow += empty
     rows.push(fenRow)
   }
-  if (!hasPieces) return null
   return `${rows.join("/")} ${activeColor} ${castling} - 0 1`
+}
+
+export function resolvePuzzleTurn(
+  hasMovelist: boolean,
+  isFlipped: boolean,
+  currentPlies: number,
+  puzzleState: { baseTurn: "w" | "b" | null, basePlies: number, settled: boolean },
+  detectText: () => "w" | "b" | null,
+  detectOrientation: (flipped: boolean) => "w" | "b"
+): { turn: "w" | "b" | "unknown", turnSrc: string } {
+  let turn: "w" | "b" | "unknown" = "unknown"
+  let turnSrc = ""
+
+  if (hasMovelist) {
+    if (!puzzleState.settled) {
+      // Mod 1: Atomic Snapshot Constraint. Base Turn and Base Plies are read together after stabilization.
+      const baseTurn = detectText() || detectOrientation(isFlipped)
+      if (baseTurn) {
+        puzzleState.baseTurn = baseTurn
+        puzzleState.basePlies = currentPlies
+        puzzleState.settled = true
+      }
+    }
+
+    if (puzzleState.settled) {
+      const diff = currentPlies - puzzleState.basePlies
+      turn = diff % 2 === 0 ? puzzleState.baseTurn! : (puzzleState.baseTurn === "w" ? "b" : "w")
+      turnSrc = "ply-tracking"
+    }
+  } else {
+    // Mod 2: No Movelist. Never fall back to Diff or Piece Count.
+    turn = detectText() || detectOrientation(isFlipped) || "unknown"
+    turnSrc = "static-puzzle-cues"
+    puzzleState.settled = true
+  }
+
+  return { turn, turnSrc }
 }
 
 // ─── Overlay Component ────────────────────────────────────────────────
@@ -362,31 +398,14 @@ const ChessAssistantOverlay = () => {
       const castling = getHeuristicCastling(geoData.boardArr)
       const container = findMoveListElement()
       const currentPlies = gameTrackerRef.current.extractPliesCountOnly()
-      let turn: "w" | "b" | "unknown" = "unknown"
-      let turnSrc = ""
-
-      if (container) {
-        // Movelist exists. Apply Ply-Tracking.
-        if (!puzzleStateRef.current.settled) {
-          // Mod 1: Atomic Snapshot Constraint. Base Turn and Base Plies are read together after stabilization.
-          const baseTurn = detectByPuzzleText() || detectByOrientation(geoData.isFlipped)
-          if (baseTurn) {
-            puzzleStateRef.current = { baseTurn, basePlies: currentPlies, settled: true }
-          }
-        }
-
-        if (puzzleStateRef.current.settled) {
-          const diff = currentPlies - puzzleStateRef.current.basePlies
-          turn = diff % 2 === 0 ? puzzleStateRef.current.baseTurn! : (puzzleStateRef.current.baseTurn === "w" ? "b" : "w")
-          turnSrc = "ply-tracking"
-        }
-      } else {
-        // Mod 2: No Movelist. Never fall back to Diff or Piece Count.
-        // Read directly from text/orientation after stabilization.
-        turn = detectByPuzzleText() || detectByOrientation(geoData.isFlipped) || "unknown"
-        turnSrc = "static-puzzle-cues"
-        puzzleStateRef.current.settled = true
-      }
+      const { turn, turnSrc } = resolvePuzzleTurn(
+        container !== null,
+        geoData.isFlipped,
+        currentPlies,
+        puzzleStateRef.current,
+        detectByPuzzleText,
+        detectByOrientation
+      )
 
       if (turn === "unknown") {
         console.warn("[ChessHelper] Puzzle turn unknown. Standby.")
