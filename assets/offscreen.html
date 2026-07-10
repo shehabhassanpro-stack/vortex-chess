@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Chess Helper AI — Offscreen Engine</title>
+</head>
+<body>
+  <!-- 
+    This is a hidden offscreen document.
+    It runs in a full page context (unlike the Service Worker),
+    which means it CAN create Web Workers — exactly what we need
+    to run the Stockfish WASM engine.
+  -->
+  <script src="offscreen.js"></script>
+</body>
+</html>
