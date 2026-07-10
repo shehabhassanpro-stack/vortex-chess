@@ -1,0 +1,91 @@
+import { describe, test, expect, beforeEach } from 'vitest'
+import { detectActiveColorGeometric } from './content'
+
+describe("detectActiveColorGeometric", () => {
+  beforeEach(() => {
+    document.body.innerHTML = ''
+    // Default context mock
+    Object.defineProperty(window, 'location', {
+      value: { pathname: '/analysis' },
+      writable: true
+    })
+  })
+
+  test("Strategy 1: active clock present → clock wins over all strategies", () => {
+    document.body.innerHTML = '<div class="clock-white clock-player-turn"></div>'
+    // Even if diff or orientation suggests black, clock white should win
+    const result = detectActiveColorGeometric([], "diff1", "b", true)
+    expect(result).toBe("w")
+  })
+
+  test("Strategy 2: board changed since last call → flip turn", () => {
+    // No clock, use diff
+    const prevSig = ".......P|........"
+    const currentBoard = [
+      [null, null, null, null, null, null, null, null],
+      [null, null, null, null, null, null, null, null],
+      [null, null, null, null, null, null, null, null],
+      [null, null, null, null, null, null, null, null],
+      [null, null, null, null, null, null, null, null],
+      [null, null, null, null, null, null, null, null],
+      [null, null, null, null, null, null, null, null],
+      ["P", null, null, null, null, null, null, null]
+    ] // this encodes to a different string
+    
+    const result = detectActiveColorGeometric(currentBoard, prevSig, "w", false)
+    expect(result).toBe("b") // board changed, so turn flips from w to b
+  })
+
+  test("Strategy 2: board unchanged → return same turn", () => {
+    const boardArr = [
+      [null, null, null, null, null, null, null, null],
+      [null, null, null, null, null, null, null, null],
+      [null, null, null, null, null, null, null, null],
+      [null, null, null, null, null, null, null, null],
+      [null, null, null, null, null, null, null, null],
+      [null, null, null, null, null, null, null, null],
+      [null, null, null, null, null, null, null, null],
+      [null, null, null, null, null, null, null, "P"]
+    ]
+    // Mock the encoding logic for the test to match prevSig
+    const prevSig = boardArr.map(row => row.map(c => c ?? ".").join("")).join("|")
+    const result = detectActiveColorGeometric(boardArr, prevSig, "b", false)
+    expect(result).toBe("b") // board unchanged, turn stays b
+  })
+
+  test("Strategy 3: Puzzle text 'White to move'", () => {
+    document.body.innerHTML = '<div class="message-component">White to move</div>'
+    const result = detectActiveColorGeometric([], "", "w", true)
+    expect(result).toBe("w")
+  })
+
+  test("Strategy 4: Board Orientation (Task 1) - puzzle flipped", () => {
+    Object.defineProperty(window, 'location', {
+      value: { pathname: '/puzzles' },
+      writable: true
+    })
+    
+    // Flipped board -> Black's turn
+    const result = detectActiveColorGeometric([], "", "w", true)
+    expect(result).toBe("b")
+  })
+
+  test("Strategy 5: first extraction (prevSig='') → piece count strategy", () => {
+    Object.defineProperty(window, 'location', {
+      value: { pathname: '/unknown' },
+      writable: true
+    })
+    const startBoard = [
+      ["r", "n", "b", "q", "k", "b", "n", "r"],
+      ["p", "p", "p", "p", "p", "p", "p", "p"],
+      [null, null, null, null, null, null, null, null],
+      [null, null, null, null, null, null, null, null],
+      [null, null, null, null, null, null, null, null],
+      [null, null, null, null, null, null, null, null],
+      ["P", "P", "P", "P", "P", "P", "P", "P"],
+      ["R", "N", "B", "Q", "K", "B", "N", "R"]
+    ]
+    const result = detectActiveColorGeometric(startBoard, "", "w", false)
+    expect(result).toBe("w")
+  })
+})
