@@ -2,7 +2,7 @@ import type { PlasmoCSConfig } from "plasmo"
 import { useEffect, useRef, useState, useCallback } from "react"
 import { Chessboard } from "react-chessboard"
 import type { Square } from "chess.js"
-import { GameTracker } from "~lib/gameTracker"
+import { GameTracker, findMoveListElement } from "~lib/gameTracker"
 import type { TrackerState } from "~lib/gameTracker"
 
 export const config: PlasmoCSConfig = {
@@ -10,6 +10,8 @@ export const config: PlasmoCSConfig = {
   all_frames: false,
   run_at: "document_idle",
 }
+
+console.info("[ChessHelper] build fa9e0e0+ (Diagnostic Session)")
 
 // ─── Types ────────────────────────────────────────────────────────────
 
@@ -47,7 +49,6 @@ const PIECE_MAP: Record<string, string> = {
 const CHESS_COM_SELECTORS = {
   BOARD:       "chess-board",
   PIECE:       ".piece",
-  MOVE_LIST:   "wc-simple-move-list, vertical-move-list, .move-list-wrapper, rml, .moves",
   CLOCK_WHITE: ".clock-white.clock-player-turn",
   CLOCK_BLACK: ".clock-black.clock-player-turn",
 } as const
@@ -205,26 +206,30 @@ function detectByPieceCount(boardArr: (string | null)[][]): "w" | "b" {
 /**
  * Detect active color for the geometric fallback path.
  */
-function detectActiveColorGeometric(
+export function detectActiveColorGeometric(
   boardArr:  (string | null)[][],
   prevSig:   string,
   prevTurn:  "w" | "b",
   isFlipped: boolean
 ): "w" | "b" {
+  const ts = new Date().toISOString()
+  const currentSig = encodeBoardSig(boardArr)
+  dbg(`[Active Color] [${ts}] Starting detection. prevTurn=${prevTurn}, prevSig=${prevSig.substring(0, 15)}... currentSig=${currentSig.substring(0, 15)}...`)
+
   let result = detectByClock()
-  if (result) { dbg(`[Active Color] Strategy 1 (clock) → ${result}`); return result }
+  if (result) { dbg(`[Active Color] [${ts}] Strategy 1 (clock) → ${result}`); return result }
 
   result = detectByDiff(boardArr, prevSig, prevTurn)
-  if (result) { dbg(`[Active Color] Strategy 2 (diff) → ${result}`); return result }
+  if (result) { dbg(`[Active Color] [${ts}] Strategy 2 (diff) → ${result}`); return result }
 
   result = detectByPuzzleText()
-  if (result) { dbg(`[Active Color] Strategy 3 (puzzle text) → ${result}`); return result }
+  if (result) { dbg(`[Active Color] [${ts}] Strategy 3 (puzzle text) → ${result}`); return result }
 
   result = detectByOrientation(isFlipped)
-  if (result) { dbg(`[Active Color] Strategy 4 (orientation) → ${result}`); return result }
+  if (result) { dbg(`[Active Color] [${ts}] Strategy 4 (orientation) → ${result}`); return result }
 
   result = detectByPieceCount(boardArr)
-  dbg(`[Active Color] Strategy 5 (piece count - unreliable) → ${result}`)
+  dbg(`[Active Color] [${ts}] Strategy 5 (piece count - unreliable) → ${result}`)
   return result
 }
 
@@ -274,6 +279,7 @@ const ChessAssistantOverlay = () => {
   // Geometric fallback state — used by diff-based active color detection
   const prevBoardSigRef = useRef("")    // encoded board from last geometric extraction
   const prevGeoTurnRef  = useRef<"w" | "b">("w")  // turn from last geometric extraction
+  const traceMetaRef    = useRef({ src: "", plies: 0, lastSan: "", turnSrc: "" })
 
   // ── Reset analysis display ──
   const resetAnalysis = () => {
@@ -284,11 +290,16 @@ const ChessAssistantOverlay = () => {
   }
 
   const processGeometricData = useCallback((geoData: { boardArr: (string | null)[][], boardEl: HTMLElement, isFlipped: boolean }) => {
+    // We will intercept the dbg logs from detectActiveColorGeometric by looking at what it returns,
+    // but traceMetaRef needs the turnSrc. For now we will just label it "geometric-strategies".
     const activeColor = detectActiveColorGeometric(
       geoData.boardArr, prevBoardSigRef.current, prevGeoTurnRef.current, geoData.isFlipped
     )
     prevBoardSigRef.current = encodeBoardSig(geoData.boardArr)
     prevGeoTurnRef.current  = activeColor
+    traceMetaRef.current.turnSrc = "geometric-strategies"
+    traceMetaRef.current.plies = gameTrackerRef.current['lastMoveCount'] ?? 0
+    traceMetaRef.current.lastSan = "N/A"
     return boardToFenRows(geoData.boardArr, activeColor)
   }, [])
 
@@ -325,9 +336,19 @@ const ChessAssistantOverlay = () => {
       dbg(`[FEN-SOURCE] chess.js → turn=${state.turn} fen="${state.fen}"`)
       setFenSource("chess.js")
       prevBoardSigRef.current = ""
+      
+      traceMetaRef.current = {
+        src: "movelist",
+        plies: state.plyCount,
+        lastSan: gameTrackerRef.current['lastMoveSig']?.split(':')[1] || "none",
+        turnSrc: "chess.js"
+      }
       return state.fen
     }
-    return getGeometricFallbackFen()
+    
+    const fallbackFen = getGeometricFallbackFen()
+    if (fallbackFen) traceMetaRef.current.src = "geometric"
+    return fallbackFen
   }, [getGeometricFallbackFen, handleDesync])
 
   // ── Trigger analysis ──
@@ -347,8 +368,7 @@ const ChessAssistantOverlay = () => {
     setComplianceBlocked(false)
 
     // Check game is active (move list exists or forced)
-    const hasGame = force || isForced ||
-      document.querySelector(CHESS_COM_SELECTORS.MOVE_LIST) !== null
+    const hasGame = force || isForced || findMoveListElement() !== null
     if (!hasGame) {
       setStandby(true)
       setThinking(false)
@@ -372,6 +392,14 @@ const ChessAssistantOverlay = () => {
     if (speedMode === "fast")   msg.movetime = 500
     else if (speedMode === "normal") msg.depth = 15
     else if (speedMode === "deep")   msg.depth = 20
+
+    if (isDebug()) {
+      const ts = new Date().toISOString()
+      const { src, plies, lastSan, turnSrc } = traceMetaRef.current
+      const turn = fen.split(" ")[1]
+      const fenHead = fen.split(" ")[0] + " " + turn
+      console.log(`[TRACE] t=${ts} src=${src} plies=${plies} lastSan=${lastSan} turn=${turn} turnSrc=${turnSrc} fen=${fenHead} id=${id}`)
+    }
 
     chrome.runtime.sendMessage(msg as OutgoingMessage)
   }, [isActive, isForced, speedMode, resolveFen])

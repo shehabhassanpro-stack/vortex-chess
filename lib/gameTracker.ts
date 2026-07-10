@@ -46,18 +46,7 @@ export interface GameTrackerOptions {
 
 // ─── Move-list container selectors ───────────────────────────────────
 
-/**
- * Ordered by specificity. We stop at the first one that returns an element.
- */
-const MOVE_LIST_SELECTORS = [
-  "wc-simple-move-list",        // SPA component (2024+), analysis & standard games
-  "vertical-move-list",         // Classic game page
-  ".move-list-wrapper",         // Older wrapper
-  "chess-moves-simple",         // Embedded boards, studies
-  "[data-cy='move-list']",
-  ".moves-wrapper",
-  "rml",                        // Rapid move list
-] as const
+import { MOVE_LIST_SELECTORS } from "./chessDomSelectors"
 
 // ─── Move-node selectors (tried in order within the container) ────────
 
@@ -117,7 +106,7 @@ function looksLikeSan(s: string): boolean {
 
 // ─── DOM helpers ──────────────────────────────────────────────────────
 
-function findMoveListElement(): Element | null {
+export function findMoveListElement(): Element | null {
   for (const sel of MOVE_LIST_SELECTORS) {
     const el = document.querySelector(sel)
     if (el) {
