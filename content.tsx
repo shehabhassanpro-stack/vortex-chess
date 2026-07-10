@@ -171,8 +171,8 @@ function detectByClock(): "w" | "b" | null {
   return null
 }
 
-function detectByDiff(boardArr: (string | null)[][], prevSig: string, prevTurn: "w" | "b"): "w" | "b" | null {
-  if (!prevSig) return null
+function detectByDiff(boardArr: (string | null)[][], prevSig: string, prevTurn: "w" | "b" | "unknown"): "w" | "b" | null {
+  if (!prevSig || prevTurn === "unknown") return null
   const currentSig = encodeBoardSig(boardArr)
   return currentSig !== prevSig ? (prevTurn === "w" ? "b" : "w") : prevTurn
 }
@@ -193,14 +193,15 @@ function detectByOrientation(isFlipped: boolean): "w" | "b" | null {
   return null
 }
 
-function detectByPieceCount(boardArr: (string | null)[][]): "w" | "b" {
+function detectByPieceCount(boardArr: (string | null)[][]): "w" | "b" | "unknown" {
   let whiteCount = 0, blackCount = 0
   boardArr.forEach(row => row.forEach(p => {
     if (!p) return
     if (p === p.toUpperCase()) whiteCount++
     else blackCount++
   }))
-  return whiteCount === blackCount ? "w" : (whiteCount < blackCount ? "w" : "b")
+  if (whiteCount === blackCount) return "unknown"
+  return whiteCount < blackCount ? "w" : "b"
 }
 
 /**
@@ -209,28 +210,28 @@ function detectByPieceCount(boardArr: (string | null)[][]): "w" | "b" {
 export function detectActiveColorGeometric(
   boardArr:  (string | null)[][],
   prevSig:   string,
-  prevTurn:  "w" | "b",
+  prevTurn:  "w" | "b" | "unknown",
   isFlipped: boolean
-): "w" | "b" {
+): { turn: "w" | "b" | "unknown", reliable: boolean } {
   const ts = new Date().toISOString()
   const currentSig = encodeBoardSig(boardArr)
   dbg(`[Active Color] [${ts}] Starting detection. prevTurn=${prevTurn}, prevSig=${prevSig.substring(0, 15)}... currentSig=${currentSig.substring(0, 15)}...`)
 
   let result = detectByClock()
-  if (result) { dbg(`[Active Color] [${ts}] Strategy 1 (clock) → ${result}`); return result }
+  if (result) { dbg(`[Active Color] [${ts}] Strategy 1 (clock) → ${result}`); return { turn: result, reliable: true } }
 
   result = detectByDiff(boardArr, prevSig, prevTurn)
-  if (result) { dbg(`[Active Color] [${ts}] Strategy 2 (diff) → ${result}`); return result }
+  if (result) { dbg(`[Active Color] [${ts}] Strategy 2 (diff) → ${result}`); return { turn: result, reliable: true } }
 
   result = detectByPuzzleText()
-  if (result) { dbg(`[Active Color] [${ts}] Strategy 3 (puzzle text) → ${result}`); return result }
+  if (result) { dbg(`[Active Color] [${ts}] Strategy 3 (puzzle text) → ${result}`); return { turn: result, reliable: true } }
 
   result = detectByOrientation(isFlipped)
-  if (result) { dbg(`[Active Color] [${ts}] Strategy 4 (orientation) → ${result}`); return result }
+  if (result) { dbg(`[Active Color] [${ts}] Strategy 4 (orientation) → ${result}`); return { turn: result, reliable: true } }
 
-  result = detectByPieceCount(boardArr)
-  dbg(`[Active Color] [${ts}] Strategy 5 (piece count - unreliable) → ${result}`)
-  return result
+  const fallbackResult = detectByPieceCount(boardArr)
+  dbg(`[Active Color] [${ts}] Strategy 5 (piece count - unreliable) → ${fallbackResult}`)
+  return { turn: fallbackResult, reliable: false }
 }
 
 function boardToFenRows(board: (string | null)[][], activeColor: "w" | "b"): string | null {
@@ -278,7 +279,7 @@ const ChessAssistantOverlay = () => {
   }))
   // Geometric fallback state — used by diff-based active color detection
   const prevBoardSigRef = useRef("")    // encoded board from last geometric extraction
-  const prevGeoTurnRef  = useRef<"w" | "b">("w")  // turn from last geometric extraction
+  const prevGeoTurnRef  = useRef<"w" | "b" | "unknown">("unknown")  // turn from last geometric extraction
   const traceMetaRef    = useRef({ src: "", plies: 0, lastSan: "", turnSrc: "" })
 
   // ── Reset analysis display ──
@@ -290,17 +291,27 @@ const ChessAssistantOverlay = () => {
   }
 
   const processGeometricData = useCallback((geoData: { boardArr: (string | null)[][], boardEl: HTMLElement, isFlipped: boolean }) => {
-    // We will intercept the dbg logs from detectActiveColorGeometric by looking at what it returns,
-    // but traceMetaRef needs the turnSrc. For now we will just label it "geometric-strategies".
-    const activeColor = detectActiveColorGeometric(
+    const { turn, reliable } = detectActiveColorGeometric(
       geoData.boardArr, prevBoardSigRef.current, prevGeoTurnRef.current, geoData.isFlipped
     )
+    
     prevBoardSigRef.current = encodeBoardSig(geoData.boardArr)
-    prevGeoTurnRef.current  = activeColor
-    traceMetaRef.current.turnSrc = "geometric-strategies"
+    
+    if (reliable && turn !== "unknown") {
+      prevGeoTurnRef.current = turn
+    } else {
+      console.warn(`[ChessHelper] Unreliable turn detection (${turn}). Not updating prevGeoTurnRef.`)
+    }
+    
+    if (turn === "unknown") {
+      console.warn("[ChessHelper] Turn is unknown and no reliable proof exists. Skipping analysis.")
+      return null
+    }
+
+    traceMetaRef.current.turnSrc = reliable ? "geometric-strategies" : "piece-count"
     traceMetaRef.current.plies = gameTrackerRef.current['lastMoveCount'] ?? 0
     traceMetaRef.current.lastSan = "N/A"
-    return boardToFenRows(geoData.boardArr, activeColor)
+    return boardToFenRows(geoData.boardArr, turn as "w" | "b")
   }, [])
 
   const handleDesync = useCallback((geoData: { boardArr: (string | null)[][], boardEl: HTMLElement, isFlipped: boolean }) => {
