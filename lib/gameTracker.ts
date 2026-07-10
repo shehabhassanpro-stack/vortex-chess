@@ -168,24 +168,28 @@ function extractNodeSan(node: Element): string {
   return san
 }
 
-function extractSanMoves(container: Element): string[] {
+function extractSanMoves(container: Element): Array<{ san: string, raw: string }> {
   // Strategy A: structured node selectors
   for (const sel of MOVE_NODE_SELECTORS) {
     const nodes = Array.from(container.querySelectorAll(sel))
     if (nodes.length === 0) continue
 
-    const sans: string[] = []
+    const moves: Array<{ san: string, raw: string }> = []
     for (const node of nodes) {
       const text = extractNodeSan(node)
 
       if (!text) continue
       const san = normaliseSan(text)
-      if (looksLikeSan(san)) sans.push(san)
+      if (looksLikeSan(san)) {
+        // Grab outerHTML for element nodes or textContent for text nodes
+        const raw = node.nodeType === Node.ELEMENT_NODE ? (node as Element).outerHTML : node.textContent || ""
+        moves.push({ san, raw })
+      }
     }
 
-    if (sans.length > 0) {
-      dbg(`[FEN-SOURCE] Extracted ${sans.length} moves via selector "${sel}"`)
-      return sans
+    if (moves.length > 0) {
+      dbg(`[FEN-SOURCE] Extracted ${moves.length} moves via selector "${sel}"`)
+      return moves
     }
   }
 
@@ -193,8 +197,8 @@ function extractSanMoves(container: Element): string[] {
   const raw = container.textContent ?? ""
   const tokens = raw
     .split(/\s+/)
-    .map(normaliseSan)
-    .filter(looksLikeSan)
+    .map(t => ({ san: normaliseSan(t), raw: t }))
+    .filter(m => looksLikeSan(m.san))
 
   if (tokens.length > 0) {
     dbg(`[FEN-SOURCE] Extracted ${tokens.length} moves via raw text fallback`)
@@ -209,6 +213,7 @@ export class GameTracker {
   private lastMoveCount = -1
   private lastMoveSig   = ""     // last-SAN cache key: prevents stale hits on takeback+new move
   private lastFen       = ""
+  private failedReplayCount = 0
   private readonly options: GameTrackerOptions
 
   constructor(options: GameTrackerOptions = {}) {
@@ -236,7 +241,8 @@ export class GameTracker {
       return null
     }
 
-    const sans = extractSanMoves(container)
+    const moves = extractSanMoves(container)
+    const sans = moves.map(m => m.san)
     const lastSan = sans.length > 0 ? sans[sans.length - 1] : "none"
     dbg(`[FEN-SOURCE] [${new Date().toISOString()}] movelist — ${sans.length} moves read | last SAN: ${lastSan} | turn will come from chess.js`)
 
@@ -251,7 +257,7 @@ export class GameTracker {
     const cachedState = this.checkCache(sans)
     if (cachedState) return cachedState
 
-    return this.performFullReplay(sans)
+    return this.performFullReplay(moves)
   }
 
   private checkCache(sans: string[]): TrackerState | null {
@@ -268,9 +274,18 @@ export class GameTracker {
     return null
   }
 
-  private performFullReplay(sans: string[]): TrackerState | null {
-    const ok = this.replayMoves(sans)
-    if (!ok) return null
+  private performFullReplay(moves: Array<{ san: string, raw: string }>): TrackerState | null {
+    const ok = this.replayMoves(moves)
+    if (!ok) {
+      this.failedReplayCount++
+      if (this.failedReplayCount >= 2) {
+        console.warn(`[ChessHelper:GameTracker] Persistent replay failure detected. Selector or parsing may be broken. Using geometric fallback.`)
+      }
+      return null
+    }
+
+    this.failedReplayCount = 0
+    const sans = moves.map(m => m.san)
 
     this.lastMoveCount = sans.length
     this.lastMoveSig   = `${sans.length}:${sans[sans.length - 1]}`
@@ -314,18 +329,19 @@ export class GameTracker {
 
   // ── Private ─────────────────────────────────────────────────────────
 
-  private replayMoves(sans: string[]): boolean {
+  private replayMoves(moves: Array<{ san: string, raw: string }>): boolean {
     const fresh = new Chess()
 
-    for (const san of sans) {
+    for (let i = 0; i < moves.length; i++) {
+      const { san, raw } = moves[i]
       try {
         const result = fresh.move(san)
         if (result === null) {
-          this.warn(`Illegal move during replay: "${san}"`)
+          dbg(`[FEN-SOURCE] Failed move="${san}" at ply ${i + 1}. Raw node: ${raw}`)
           return false
         }
-      } catch {
-        this.warn(`chess.js exception on move "${san}"`)
+      } catch (e) {
+        dbg(`[FEN-SOURCE] Exception on move="${san}" at ply ${i + 1}. Raw node: ${raw}`)
         return false
       }
     }
