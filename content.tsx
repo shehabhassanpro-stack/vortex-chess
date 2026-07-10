@@ -84,9 +84,9 @@ function getGameContext(): GameContext {
 }
 
 function isAnalysisAllowed(context: GameContext): boolean {
-  // Allow on: computer games, puzzles, analysis, post-game, unknown pages
-  // Block on: live games (Chess.com Fair Play policy) and home
-  return context !== "live" && context !== "home"
+  // Block on: home
+  // WARNING: Enabling this in live online games violates Chess.com Fair Play policy and may result in an account ban.
+  return context !== "home"
 }
 
 // ─── DOM Helpers ──────────────────────────────────────────────────────
