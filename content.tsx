@@ -44,18 +44,29 @@ const PIECE_MAP: Record<string, string> = {
   bp: "p", bn: "n", bb: "b", br: "r", bq: "q", bk: "k",
 }
 
-/**
- * CSS selectors for Chess.com board elements.
- * Ordered by specificity / likelihood.
- */
 const CHESS_COM_SELECTORS = {
-  BOARD:      "chess-board",
-  PIECE:      ".piece",
-  HIGHLIGHT:  ".highlight, .last-move, .square-highlight",
-  MOVE_LIST:  "wc-simple-move-list, vertical-move-list, .move-list-wrapper, rml, .moves",
+  BOARD:       "chess-board",
+  PIECE:       ".piece",
+  MOVE_LIST:   "wc-simple-move-list, vertical-move-list, .move-list-wrapper, rml, .moves",
   CLOCK_WHITE: ".clock-white.clock-player-turn",
   CLOCK_BLACK: ".clock-black.clock-player-turn",
 } as const
+
+/** Enable via: window.__CHESS_HELPER_DEBUG = true in DevTools */
+function isDebug(): boolean {
+  return !!(window as Window & { __CHESS_HELPER_DEBUG?: boolean }).__CHESS_HELPER_DEBUG
+}
+function dbg(...args: unknown[]): void {
+  if (isDebug()) console.log("[ChessHelper:content]", ...args)
+}
+
+/**
+ * Encodes the board array as a compact string for diffing between frames.
+ * Used by the geometric fallback to detect which side just moved.
+ */
+function encodeBoardSig(arr: (string | null)[][]): string {
+  return arr.map(row => row.map(c => c ?? ".").join("")).join("|")
+}
 
 // ─── Game Context Detection ───────────────────────────────────────────
 
@@ -113,116 +124,121 @@ function checkIsFlipped(boardEl: Element | null): boolean {
 
 // ─── Geometric FEN Extraction (fallback) ─────────────────────────────
 
-function extractGeometricFen(): string | null {
+/**
+ * Extract the 8x8 board array from DOM geometry.
+ * Does NOT determine active color — that is handled by the caller.
+ */
+function extractBoardArray(): {
+  boardArr: (string | null)[][]
+  boardEl:  HTMLElement
+  isFlipped: boolean
+} | null {
   const data = getBoardAndPieces()
   if (!data) return null
   const { board, pieces } = data
 
-  const boardEl = board as HTMLElement
+  const boardEl    = board as HTMLElement
   const squareSize = (boardEl.offsetWidth || boardEl.getBoundingClientRect().width) / 8
   const boardArr: (string | null)[][] = Array.from({ length: 8 }, () => Array(8).fill(null))
-  const isFlipped = checkIsFlipped(boardEl)
-  const boardRect = boardEl.getBoundingClientRect()
+  const isFlipped  = checkIsFlipped(boardEl)
+  const boardRect  = boardEl.getBoundingClientRect()
 
   for (const el of Array.from(pieces)) {
     const classes = Array.from(el.classList)
     let pieceChar: string | null = null
-
     for (const cls of classes) {
-      if (cls.length === 2 && PIECE_MAP[cls]) {
-        pieceChar = PIECE_MAP[cls]
-        break
-      }
+      if (cls.length === 2 && PIECE_MAP[cls]) { pieceChar = PIECE_MAP[cls]; break }
     }
     if (!pieceChar) continue
 
     const pieceRect = el.getBoundingClientRect()
     const cx = pieceRect.left + pieceRect.width  / 2 - boardRect.left
     const cy = pieceRect.top  + pieceRect.height / 2 - boardRect.top
-
-    let col = Math.floor(cx / squareSize)
-    let row = Math.floor(cy / squareSize)
-
+    const col = Math.floor(cx / squareSize)
+    const row = Math.floor(cy / squareSize)
     if (col >= 0 && col < 8 && row >= 0 && row < 8) {
-      const fenRow = isFlipped ? 7 - row : row
-      const fenCol = isFlipped ? 7 - col : col
-      boardArr[fenRow][fenCol] = pieceChar
+      boardArr[isFlipped ? 7 - row : row][isFlipped ? 7 - col : col] = pieceChar
     }
   }
 
-  // Active color detection — multi-strategy
-  let activeColor: "w" | "b" = detectActiveColorGeometric(boardEl, boardArr, boardRect, squareSize, isFlipped)
-
-  return boardToFenRows(boardArr, activeColor)
+  return { boardArr, boardEl, isFlipped }
 }
 
 /**
- * Multi-strategy active color detection without relying solely on highlights.
+ * Detect active color for the geometric fallback path.
+ *
+ * Priority order:
+ *   1. Clock animations (most reliable, works in live/computer games)
+ *   2. Diff against previous board snapshot (reliable after first move)
+ *   3. Piece count parity (starting position only)
+ *
+ * The HIGHLIGHT heuristic has been removed — it was the source of the
+ * active-color flip bug because yellow squares don't reliably indicate
+ * which side just moved on /analysis.
+ *
+ * @param boardArr  Current board state
+ * @param prevSig   Encoded board from previous extraction (may be empty)
+ * @param prevTurn  Turn from previous extraction (used with diff strategy)
  */
 function detectActiveColorGeometric(
-  boardEl: Element,
-  boardArr: (string | null)[][],
-  boardRect: DOMRect,
-  squareSize: number,
-  isFlipped: boolean
+  boardArr:  (string | null)[][],
+  prevSig:   string,
+  prevTurn:  "w" | "b"
 ): "w" | "b" {
-  // Strategy 1: active clock animation (most reliable)
-  if (document.querySelector(CHESS_COM_SELECTORS.CLOCK_BLACK))  return "b"
-  if (document.querySelector(CHESS_COM_SELECTORS.CLOCK_WHITE))  return "w"
+  // Strategy 1: active clock (most reliable — present in computer/online games)
+  if (document.querySelector(CHESS_COM_SELECTORS.CLOCK_BLACK)) {
+    dbg("[Active Color] Strategy 1 (clock) → b")
+    return "b"
+  }
+  if (document.querySelector(CHESS_COM_SELECTORS.CLOCK_WHITE)) {
+    dbg("[Active Color] Strategy 1 (clock) → w")
+    return "w"
+  }
 
-  // Strategy 2: highlight over a piece (original approach)
-  const highlights = Array.from(
-    document.querySelectorAll(CHESS_COM_SELECTORS.HIGHLIGHT)
-  )
-  for (const hl of highlights) {
-    const rect = hl.getBoundingClientRect()
-    const cx = rect.left + rect.width  / 2
-    const cy = rect.top  + rect.height / 2
-    if (cx >= boardRect.left && cx <= boardRect.right &&
-        cy >= boardRect.top  && cy <= boardRect.bottom) {
-      const col    = Math.max(0, Math.min(7, Math.floor((cx - boardRect.left) / squareSize)))
-      const row    = Math.max(0, Math.min(7, Math.floor((cy - boardRect.top)  / squareSize)))
-      const fenRow = isFlipped ? 7 - row : row
-      const fenCol = isFlipped ? 7 - col : col
-      const piece  = boardArr[fenRow][fenCol]
-      if (piece) return piece === piece.toUpperCase() ? "b" : "w"
+  // Strategy 2: diff against previous board snapshot
+  // If we had a known previous state and the board changed, the side that
+  // moved is the OPPOSITE of the previous turn.
+  if (prevSig) {
+    const currentSig = encodeBoardSig(boardArr)
+    if (currentSig !== prevSig) {
+      // A move was played — flip the turn
+      const newTurn = prevTurn === "w" ? "b" : "w"
+      dbg(`[Active Color] Strategy 2 (diff) → ${newTurn} (board changed from prev)`)
+      return newTurn
+    } else {
+      // Board unchanged since last call — return same turn
+      dbg(`[Active Color] Strategy 2 (diff) → ${prevTurn} (board unchanged)`)
+      return prevTurn
     }
   }
 
-  // Strategy 3: piece count parity (black has one fewer → white just moved)
+  // Strategy 3: piece count parity — reliable ONLY at start / after captures
   let whiteCount = 0, blackCount = 0
   boardArr.forEach(row => row.forEach(p => {
     if (!p) return
     if (p === p.toUpperCase()) whiteCount++
     else blackCount++
   }))
-  if (whiteCount === blackCount) return "w"  // Start of game — white moves first
-  if (whiteCount < blackCount)   return "w"  // White captured last (has fewer pieces)
-  return "b"
+  // Equal pieces → starting position → White moves first
+  const result = whiteCount === blackCount ? "w" : (whiteCount < blackCount ? "w" : "b")
+  dbg(`[Active Color] Strategy 3 (piece count w=${whiteCount} b=${blackCount}) → ${result}`)
+  return result
 }
 
 function boardToFenRows(board: (string | null)[][], activeColor: "w" | "b"): string | null {
   const rows: string[] = []
   let hasPieces = false
-
   for (const row of board) {
     let fenRow = ""
     let empty  = 0
     for (const cell of row) {
-      if (cell === null) {
-        empty++
-      } else {
-        hasPieces = true
-        if (empty > 0) { fenRow += empty; empty = 0 }
-        fenRow += cell
-      }
+      if (cell === null) { empty++ }
+      else { hasPieces = true; if (empty > 0) { fenRow += empty; empty = 0 } fenRow += cell }
     }
     if (empty > 0) fenRow += empty
     rows.push(fenRow)
   }
-
   if (!hasPieces) return null
-  // Note: castling/en-passant are unknown in geometric fallback
   return `${rows.join("/")} ${activeColor} - - 0 1`
 }
 
@@ -248,10 +264,13 @@ const ChessAssistantOverlay = () => {
   const observerRef     = useRef<MutationObserver | null>(null)
   const debounceRef     = useRef<ReturnType<typeof setTimeout> | null>(null)
   const retryRef        = useRef<ReturnType<typeof setInterval> | null>(null)
-  const analysisIdRef   = useRef(0)             // ← Task 2: Race Condition fix
+  const analysisIdRef   = useRef(0)
   const gameTrackerRef  = useRef(new GameTracker({
-    onWarning: (msg) => console.warn("[ChessHelper:content]", msg),
+    onWarning: (msg) => console.warn("[ChessHelper:GameTracker]", msg),
   }))
+  // Geometric fallback state — used by diff-based active color detection
+  const prevBoardSigRef = useRef("")    // encoded board from last geometric extraction
+  const prevGeoTurnRef  = useRef<"w" | "b">("w")  // turn from last geometric extraction
 
   // ── Reset analysis display ──
   const resetAnalysis = () => {
@@ -261,32 +280,56 @@ const ChessAssistantOverlay = () => {
     setThinking(true)
   }
 
-  // ── Primary FEN resolution: GameTracker → geometric fallback ──
+  // ── Primary FEN resolution: GameTracker (chess.js) → geometric fallback ──
   const resolveFen = useCallback((): string | null => {
     const tracker = gameTrackerRef.current
 
-    // 1. Try chess.js via DOM move list
+    // ── Path A: chess.js via DOM move list (authoritative source) ──
     const state: TrackerState | null = tracker.sync()
     if (state) {
-      // Validate against geometric to catch desync
-      const geometricFen = extractGeometricFen()
-      if (geometricFen && !tracker.validateAgainstGeometric(geometricFen)) {
-        // Divergence detected — trust geometric board layout but keep chess.js counters
-        // Reset tracker so next sync starts fresh from DOM
-        tracker.reset()
-        console.warn("[ChessHelper:content] Divergence detected — resetting GameTracker")
-        // Use geometric FEN with unknown castling (safe fallback)
-        setFenSource("geometric-fallback")
-        return geometricFen
+      // chess.js succeeded — active color comes exclusively from chess.js.turn()
+      // Validate board layout against geometric to catch desyncs
+      const geoData = extractBoardArray()
+      if (geoData) {
+        const geoBoard = boardToFenRows(geoData.boardArr, state.turn)
+        if (geoBoard && !tracker.validateAgainstGeometric(geoBoard)) {
+          // Board layout diverged — reset and trust geometric for this frame
+          tracker.reset()
+          console.warn("[ChessHelper] Board desync — resetting GameTracker")
+          setFenSource("geometric-fallback")
+          // Use diff-based color for the geometric fallback in this frame
+          const activeColor = detectActiveColorGeometric(
+            geoData.boardArr, prevBoardSigRef.current, prevGeoTurnRef.current
+          )
+          prevBoardSigRef.current = encodeBoardSig(geoData.boardArr)
+          prevGeoTurnRef.current  = activeColor
+          return boardToFenRows(geoData.boardArr, activeColor)
+        }
       }
+      dbg(`[FEN-SOURCE] chess.js → turn=${state.turn} fen="${state.fen}"`)
       setFenSource("chess.js")
+      // Reset geo diff refs so they re-sync if we fall back later
+      prevBoardSigRef.current = ""
       return state.fen
     }
 
-    // 2. Geometric fallback
-    const geoFen = extractGeometricFen()
-    if (geoFen) setFenSource("geometric-fallback")
-    return geoFen
+    // ── Path B: Geometric fallback (no move list — Puzzles, etc.) ──
+    const geoData = extractBoardArray()
+    if (!geoData) return null
+
+    // Diff-based active color: no highlight heuristic
+    const activeColor = detectActiveColorGeometric(
+      geoData.boardArr, prevBoardSigRef.current, prevGeoTurnRef.current
+    )
+    prevBoardSigRef.current = encodeBoardSig(geoData.boardArr)
+    prevGeoTurnRef.current  = activeColor
+
+    const fen = boardToFenRows(geoData.boardArr, activeColor)
+    if (fen) {
+      dbg(`[FEN-SOURCE] geometric → turn=${activeColor} fen="${fen}"`)
+      setFenSource("geometric-fallback")
+    }
+    return fen
   }, [])
 
   // ── Trigger analysis ──
@@ -477,9 +520,11 @@ const ChessAssistantOverlay = () => {
       observerRef.current = null
 
       // Reset state
-      lastFenRef.current = ""
-      analysisIdRef.current++        // Invalidate any in-flight analysis
+      lastFenRef.current      = ""
+      analysisIdRef.current++          // Invalidate any in-flight analysis
       gameTrackerRef.current.reset()
+      prevBoardSigRef.current = ""     // Clear diff state for geometric fallback
+      prevGeoTurnRef.current  = "w"
       setBestMove("")
       setEvaluation("")
       setDepth(0)
