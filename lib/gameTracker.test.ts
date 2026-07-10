@@ -1,7 +1,12 @@
-import { describe, test, expect, beforeEach } from 'vitest'
+import { describe, test, expect, beforeEach, vi } from 'vitest'
 import { GameTracker } from './gameTracker'
+import { MOVE_LIST_SELECTORS } from './chessDomSelectors'
 
 describe("GameTracker sync()", () => {
+  test("Unified selectors include .moves", () => {
+    expect(MOVE_LIST_SELECTORS).toContain(".moves")
+  })
+
   let tracker: GameTracker
 
   beforeEach(() => {

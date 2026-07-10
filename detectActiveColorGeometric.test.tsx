@@ -15,7 +15,8 @@ describe("detectActiveColorGeometric", () => {
     document.body.innerHTML = '<div class="clock-white clock-player-turn"></div>'
     // Even if diff or orientation suggests black, clock white should win
     const result = detectActiveColorGeometric([], "diff1", "b", true)
-    expect(result).toBe("w")
+    expect(result.turn).toBe("w")
+    expect(result.reliable).toBe(true)
   })
 
   test("Strategy 2: board changed since last call → flip turn", () => {
@@ -33,7 +34,8 @@ describe("detectActiveColorGeometric", () => {
     ] // this encodes to a different string
     
     const result = detectActiveColorGeometric(currentBoard, prevSig, "w", false)
-    expect(result).toBe("b") // board changed, so turn flips from w to b
+    expect(result.turn).toBe("b") // board changed, so turn flips from w to b
+    expect(result.reliable).toBe(true)
   })
 
   test("Strategy 2: board unchanged → return same turn", () => {
@@ -50,13 +52,15 @@ describe("detectActiveColorGeometric", () => {
     // Mock the encoding logic for the test to match prevSig
     const prevSig = boardArr.map(row => row.map(c => c ?? ".").join("")).join("|")
     const result = detectActiveColorGeometric(boardArr, prevSig, "b", false)
-    expect(result).toBe("b") // board unchanged, turn stays b
+    expect(result.turn).toBe("b") // board unchanged, turn stays b
+    expect(result.reliable).toBe(true)
   })
 
   test("Strategy 3: Puzzle text 'White to move'", () => {
     document.body.innerHTML = '<div class="message-component">White to move</div>'
-    const result = detectActiveColorGeometric([], "", "w", true)
-    expect(result).toBe("w")
+    const result = detectActiveColorGeometric([], "", "unknown", true)
+    expect(result.turn).toBe("w")
+    expect(result.reliable).toBe(true)
   })
 
   test("Strategy 4: Board Orientation (Task 1) - puzzle flipped", () => {
@@ -66,8 +70,9 @@ describe("detectActiveColorGeometric", () => {
     })
     
     // Flipped board -> Black's turn
-    const result = detectActiveColorGeometric([], "", "w", true)
-    expect(result).toBe("b")
+    const result = detectActiveColorGeometric([], "", "unknown", true)
+    expect(result.turn).toBe("b")
+    expect(result.reliable).toBe(true)
   })
 
   test("Strategy 5: first extraction (prevSig='') → piece count strategy", () => {
@@ -85,7 +90,28 @@ describe("detectActiveColorGeometric", () => {
       ["P", "P", "P", "P", "P", "P", "P", "P"],
       ["R", "N", "B", "Q", "K", "B", "N", "R"]
     ]
-    const result = detectActiveColorGeometric(startBoard, "", "w", false)
-    expect(result).toBe("w")
+    const result = detectActiveColorGeometric(startBoard, "", "unknown", false)
+    expect(result.turn).toBe("unknown") // tied piece count = unknown
+    expect(result.reliable).toBe(false)
+  })
+
+  test("Strategy 5: unbalanced piece count → unreliable turn", () => {
+    Object.defineProperty(window, 'location', {
+      value: { pathname: '/unknown' },
+      writable: true
+    })
+    const board = [
+      ["r", "n", "b", "q", "k", "b", "n", "r"], // 8 black
+      [null, null, null, null, null, null, null, null], // 0 pawns
+      [null, null, null, null, null, null, null, null],
+      [null, null, null, null, null, null, null, null],
+      [null, null, null, null, null, null, null, null],
+      [null, null, null, null, null, null, null, null],
+      ["P", "P", "P", "P", "P", "P", "P", "P"], // 8 white
+      ["R", "N", "B", "Q", "K", "B", "N", "R"] // 8 white
+    ]
+    const result = detectActiveColorGeometric(board, "", "unknown", false)
+    expect(result.turn).toBe("b") // 16 white > 8 black -> Black has fewer pieces, so it's Black's turn
+    expect(result.reliable).toBe(false)
   })
 })
