@@ -215,7 +215,13 @@ export class GameTracker {
       return { fen: startFen, turn: "w", plyCount: 0, source: "chess.js" }
     }
 
-    // ── Cache check (move count + last SAN must both match) ──
+    const cachedState = this.checkCache(sans)
+    if (cachedState) return cachedState
+
+    return this.performFullReplay(sans)
+  }
+
+  private checkCache(sans: string[]): TrackerState | null {
     const moveSig = `${sans.length}:${sans[sans.length - 1]}`
     if (moveSig === this.lastMoveSig && this.lastFen) {
       dbg(`[FEN-SOURCE] Cache hit (sig="${moveSig}") → turn=${this.chess.turn()}`)
@@ -226,16 +232,15 @@ export class GameTracker {
         source:   "chess.js",
       }
     }
+    return null
+  }
 
-    // ── Full replay ──
+  private performFullReplay(sans: string[]): TrackerState | null {
     const ok = this.replayMoves(sans)
-    if (!ok) {
-      // Replay failed — return null so caller can fall back
-      return null
-    }
+    if (!ok) return null
 
     this.lastMoveCount = sans.length
-    this.lastMoveSig   = moveSig
+    this.lastMoveSig   = `${sans.length}:${sans[sans.length - 1]}`
     this.lastFen       = this.chess.fen()
 
     dbg(`[FEN-SOURCE] Replayed ${sans.length} moves → turn=${this.chess.turn()} FEN="${this.lastFen}"`)
