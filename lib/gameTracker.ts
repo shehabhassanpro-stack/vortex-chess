@@ -214,6 +214,16 @@ export class GameTracker {
   // ── Public API ──────────────────────────────────────────────────────
 
   /**
+   * Used exclusively by the Puzzle Ply-Tracking strategy to get the current number
+   * of half-moves without attempting to replay them from startpos.
+   */
+  extractPliesCountOnly(): number {
+    const container = findMoveListElement()
+    if (!container) return 0
+    return extractSanMoves(container).length
+  }
+
+  /**
    * Synchronise with the DOM move list.
    *
    * Returns TrackerState on success.
