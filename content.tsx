@@ -234,7 +234,22 @@ export function detectActiveColorGeometric(
   return { turn: fallbackResult, reliable: false }
 }
 
-function boardToFenRows(board: (string | null)[][], activeColor: "w" | "b"): string | null {
+function getHeuristicCastling(boardArr: (string | null)[][]): string {
+  let castling = ""
+  // White rights (assuming rank 1 is at index 7)
+  if (boardArr[7][4] === "K") {
+    if (boardArr[7][7] === "R") castling += "K"
+    if (boardArr[7][0] === "R") castling += "Q"
+  }
+  // Black rights (assuming rank 8 is at index 0)
+  if (boardArr[0][4] === "k") {
+    if (boardArr[0][7] === "r") castling += "k"
+    if (boardArr[0][0] === "r") castling += "q"
+  }
+  return castling || "-"
+}
+
+function boardToFenRows(board: (string | null)[][], activeColor: "w" | "b", castling: string = "-"): string | null {
   const rows: string[] = []
   let hasPieces = false
   for (const row of board) {
@@ -248,7 +263,7 @@ function boardToFenRows(board: (string | null)[][], activeColor: "w" | "b"): str
     rows.push(fenRow)
   }
   if (!hasPieces) return null
-  return `${rows.join("/")} ${activeColor} - - 0 1`
+  return `${rows.join("/")} ${activeColor} ${castling} - 0 1`
 }
 
 // ─── Overlay Component ────────────────────────────────────────────────
@@ -281,6 +296,8 @@ const ChessAssistantOverlay = () => {
   const prevBoardSigRef = useRef("")    // encoded board from last geometric extraction
   const prevGeoTurnRef  = useRef<"w" | "b" | "unknown">("unknown")  // turn from last geometric extraction
   const traceMetaRef    = useRef({ src: "", plies: 0, lastSan: "", turnSrc: "" })
+  const puzzleStateRef  = useRef<{ baseTurn: "w" | "b" | null, basePlies: number, settled: boolean }>({ baseTurn: null, basePlies: -1, settled: false })
+  const lastMutationTimeRef = useRef(Date.now())
 
   // ── Reset analysis display ──
   const resetAnalysis = () => {
@@ -311,7 +328,8 @@ const ChessAssistantOverlay = () => {
     traceMetaRef.current.turnSrc = reliable ? "geometric-strategies" : "piece-count"
     traceMetaRef.current.plies = gameTrackerRef.current['lastMoveCount'] ?? 0
     traceMetaRef.current.lastSan = "N/A"
-    return boardToFenRows(geoData.boardArr, turn as "w" | "b")
+    const castling = getHeuristicCastling(geoData.boardArr)
+    return boardToFenRows(geoData.boardArr, turn as "w" | "b", castling)
   }, [])
 
   const handleDesync = useCallback((geoData: { boardArr: (string | null)[][], boardEl: HTMLElement, isFlipped: boolean }) => {
@@ -332,8 +350,58 @@ const ChessAssistantOverlay = () => {
     return fen
   }, [processGeometricData])
 
-  // ── Primary FEN resolution: GameTracker (chess.js) → geometric fallback ──
+  // ── Primary FEN resolution: Puzzles vs GameTracker ──
   const resolveFen = useCallback((): string | null => {
+    const context = getGameContext()
+    
+    // Task 4: Explicit Puzzle Handling
+    if (context === "puzzle") {
+      const geoData = extractBoardArray()
+      if (!geoData) return null
+
+      const castling = getHeuristicCastling(geoData.boardArr)
+      const container = findMoveListElement()
+      const currentPlies = gameTrackerRef.current.extractPliesCountOnly()
+      let turn: "w" | "b" | "unknown" = "unknown"
+      let turnSrc = ""
+
+      if (container) {
+        // Movelist exists. Apply Ply-Tracking.
+        if (!puzzleStateRef.current.settled) {
+          // Mod 1: Atomic Snapshot Constraint. Base Turn and Base Plies are read together after stabilization.
+          const baseTurn = detectByPuzzleText() || detectByOrientation(geoData.isFlipped)
+          if (baseTurn) {
+            puzzleStateRef.current = { baseTurn, basePlies: currentPlies, settled: true }
+          }
+        }
+
+        if (puzzleStateRef.current.settled) {
+          const diff = currentPlies - puzzleStateRef.current.basePlies
+          turn = diff % 2 === 0 ? puzzleStateRef.current.baseTurn! : (puzzleStateRef.current.baseTurn === "w" ? "b" : "w")
+          turnSrc = "ply-tracking"
+        }
+      } else {
+        // Mod 2: No Movelist. Never fall back to Diff or Piece Count.
+        // Read directly from text/orientation after stabilization.
+        turn = detectByPuzzleText() || detectByOrientation(geoData.isFlipped) || "unknown"
+        turnSrc = "static-puzzle-cues"
+        puzzleStateRef.current.settled = true
+      }
+
+      if (turn === "unknown") {
+        console.warn("[ChessHelper] Puzzle turn unknown. Standby.")
+        return null // Triggers Standby UI
+      }
+
+      const fen = boardToFenRows(geoData.boardArr, turn as "w" | "b", castling)
+      if (fen) {
+        setFenSource("geometric-fallback")
+        traceMetaRef.current = { src: "geometric-puzzle", plies: currentPlies, lastSan: "N/A", turnSrc }
+      }
+      return fen
+    }
+
+    // --- Normal Path (Non-puzzle) ---
     const tracker = gameTrackerRef.current
     const state = tracker.sync()
     if (state) {
@@ -441,9 +509,15 @@ const ChessAssistantOverlay = () => {
     setIsFlipped(checkIsFlipped(board))
 
     const observer = new MutationObserver(() => {
+      lastMutationTimeRef.current = Date.now()
       setIsFlipped(checkIsFlipped(board))
       if (debounceRef.current) clearTimeout(debounceRef.current)
-      debounceRef.current = setTimeout(() => triggerAnalysis(false), 150)
+      
+      const isUnsettledPuzzle = getGameContext() === "puzzle" && !puzzleStateRef.current.settled
+      const puzzleNoMovelist = getGameContext() === "puzzle" && findMoveListElement() === null
+      const delay = (isUnsettledPuzzle || puzzleNoMovelist) ? 500 : 150
+      
+      debounceRef.current = setTimeout(() => triggerAnalysis(false), delay)
     })
 
     // Watch board element (prefer shadowRoot to avoid double-firing)
@@ -567,6 +641,7 @@ const ChessAssistantOverlay = () => {
       lastFenRef.current      = ""
       analysisIdRef.current++          // Invalidate any in-flight analysis
       gameTrackerRef.current.reset()
+      puzzleStateRef.current = { baseTurn: null, basePlies: -1, settled: false }
       prevBoardSigRef.current = ""     // Clear diff state for geometric fallback
       prevGeoTurnRef.current  = "w"
       setBestMove("")
