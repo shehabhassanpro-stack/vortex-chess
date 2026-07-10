@@ -1,0 +1,61 @@
+{
+  "name": "chess-helper-ai",
+  "displayName": "Chess Helper AI",
+  "version": "1.0.0",
+  "description": "Free AI-powered chess assistant using Stockfish engine for real-time board analysis",
+  "author": "ChessHelperAI",
+  "scripts": {
+    "dev": "plasmo dev",
+    "build": "plasmo build",
+    "package": "plasmo package"
+  },
+  "dependencies": {
+    "chess.js": "^1.4.0",
+    "plasmo": "^0.90.5",
+    "react": "^18.3.1",
+    "react-chessboard": "^4.7.3",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.268",
+    "@types/node": "^20.14.9",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "prettier": "^3.3.2",
+    "typescript": "^5.5.3"
+  },
+  "manifest": {
+    "permissions": [
+      "storage",
+      "activeTab",
+      "tabs",
+      "offscreen"
+    ],
+    "host_permissions": [
+      "https://*.chess.com/*",
+      "https://*.lichess.org/*"
+    ],
+    "web_accessible_resources": [
+      {
+        "resources": [
+          "assets/stockfish.js",
+          "assets/stockfish.wasm",
+          "assets/offscreen.html",
+          "assets/offscreen.js"
+        ],
+        "matches": [
+          "<all_urls>"
+        ]
+      }
+    ],
+    "content_security_policy": {
+      "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+    },
+    "cross_origin_embedder_policy": {
+      "value": "require-corp"
+    },
+    "cross_origin_opener_policy": {
+      "value": "same-origin"
+    }
+  }
+}
