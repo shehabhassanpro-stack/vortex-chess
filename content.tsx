@@ -183,7 +183,8 @@ function extractBoardArray(): {
 function detectActiveColorGeometric(
   boardArr:  (string | null)[][],
   prevSig:   string,
-  prevTurn:  "w" | "b"
+  prevTurn:  "w" | "b",
+  isFlipped: boolean
 ): "w" | "b" {
   // Strategy 1: active clock (most reliable — present in computer/online games)
   if (document.querySelector(CHESS_COM_SELECTORS.CLOCK_BLACK)) {
@@ -212,7 +213,29 @@ function detectActiveColorGeometric(
     }
   }
 
-  // Strategy 3: piece count parity — reliable ONLY at start / after captures
+  // Strategy 3: Puzzle text instruction
+  const puzzleElements = document.querySelectorAll('.message-component, .puzzle-message-component, h3, .status-title, .title-text, [data-cy="turn-indicator"]')
+  for (const el of Array.from(puzzleElements)) {
+    const text = el.textContent?.toLowerCase() || ""
+    if (text.includes("white to move") || text.includes("move for white") || text.includes("white's turn")) {
+      dbg("[Active Color] Strategy 3 (puzzle text) → w")
+      return "w"
+    }
+    if (text.includes("black to move") || text.includes("move for black") || text.includes("black's turn")) {
+      dbg("[Active Color] Strategy 3 (puzzle text) → b")
+      return "b"
+    }
+  }
+
+  // Strategy 4: Board Orientation (in Puzzles and /analysis from FEN, the active player is usually at the bottom)
+  const context = getGameContext()
+  if (context === "puzzle" || context === "analysis") {
+    const turnByOri = isFlipped ? "b" : "w"
+    dbg(`[Active Color] Strategy 4 (orientation isFlipped=${isFlipped} context=${context}) → ${turnByOri}`)
+    return turnByOri
+  }
+
+  // Strategy 5: piece count parity — reliable ONLY at start / after captures (unreliable fallback)
   let whiteCount = 0, blackCount = 0
   boardArr.forEach(row => row.forEach(p => {
     if (!p) return
@@ -221,7 +244,7 @@ function detectActiveColorGeometric(
   }))
   // Equal pieces → starting position → White moves first
   const result = whiteCount === blackCount ? "w" : (whiteCount < blackCount ? "w" : "b")
-  dbg(`[Active Color] Strategy 3 (piece count w=${whiteCount} b=${blackCount}) → ${result}`)
+  dbg(`[Active Color] Strategy 5 (piece count w=${whiteCount} b=${blackCount} - unreliable) → ${result}`)
   return result
 }
 
@@ -299,7 +322,7 @@ const ChessAssistantOverlay = () => {
           setFenSource("geometric-fallback")
           // Use diff-based color for the geometric fallback in this frame
           const activeColor = detectActiveColorGeometric(
-            geoData.boardArr, prevBoardSigRef.current, prevGeoTurnRef.current
+            geoData.boardArr, prevBoardSigRef.current, prevGeoTurnRef.current, geoData.isFlipped
           )
           prevBoardSigRef.current = encodeBoardSig(geoData.boardArr)
           prevGeoTurnRef.current  = activeColor
@@ -319,7 +342,7 @@ const ChessAssistantOverlay = () => {
 
     // Diff-based active color: no highlight heuristic
     const activeColor = detectActiveColorGeometric(
-      geoData.boardArr, prevBoardSigRef.current, prevGeoTurnRef.current
+      geoData.boardArr, prevBoardSigRef.current, prevGeoTurnRef.current, geoData.isFlipped
     )
     prevBoardSigRef.current = encodeBoardSig(geoData.boardArr)
     prevGeoTurnRef.current  = activeColor
