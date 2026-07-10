@@ -95,7 +95,12 @@ const MOVE_NODE_SELECTORS = [
  * Valid SAN characters: letters, digits, +, #, =, -
  */
 function normaliseSan(raw: string): string {
-  return raw
+  if (raw.includes("1-0") || raw.includes("0-1") || raw.includes("1/2")) return ""
+  
+  let s = raw.trim()
+  s = s.replace(/^\d+\.+/, "") // Remove move numbers like "12." or "12..."
+
+  return s
     .replace(/[!?]/g, "")           // !, ?, !?, ?!, !!, ??
     .replace(/\$\d+/g, "")          // PGN NAG codes ($1, $2 …)
     .replace(/[^\w=+#\-]/g, "")     // keep SAN-valid chars only
@@ -131,6 +136,38 @@ function findMoveListElement(): Element | null {
  *   - The game hasn't started yet (starting position)
  *   - No recognised node structure found (→ caller falls back to geometric)
  */
+/**
+ * Extract text from a move node, accounting for Chess.com's Figurine Notation.
+ * Chess.com uses: <span data-figurine="N" class="icon-font-chess knight-white"></span>e7
+ */
+function extractNodeSan(node: Element): string {
+  let san = ""
+  for (const child of Array.from(node.childNodes)) {
+    if (child.nodeType === Node.ELEMENT_NODE) {
+      const el = child as Element
+      
+      const piece = el.getAttribute('data-figurine')
+      if (piece) {
+        san += piece
+      } else {
+        const cls = el.className || ""
+        if (typeof cls === 'string') {
+          if (cls.includes('knight')) san += 'N'
+          else if (cls.includes('bishop')) san += 'B'
+          else if (cls.includes('rook')) san += 'R'
+          else if (cls.includes('queen')) san += 'Q'
+          else if (cls.includes('king')) san += 'K'
+        }
+      }
+      // Also grab textContent. NormaliseSan will strip out any font glyphs (like ♘).
+      san += el.textContent || ""
+    } else if (child.nodeType === Node.TEXT_NODE) {
+      san += child.textContent || ""
+    }
+  }
+  return san
+}
+
 function extractSanMoves(container: Element): string[] {
   // Strategy A: structured node selectors
   for (const sel of MOVE_NODE_SELECTORS) {
@@ -139,12 +176,7 @@ function extractSanMoves(container: Element): string[] {
 
     const sans: string[] = []
     for (const node of nodes) {
-      // Only use the direct text content of this node (not nested children)
-      // to avoid duplicating move text from parent + child selectors.
-      const text = (node.childNodes[0]?.nodeType === Node.TEXT_NODE
-        ? node.childNodes[0].textContent
-        : node.textContent
-      )?.trim() ?? ""
+      const text = extractNodeSan(node)
 
       if (!text) continue
       const san = normaliseSan(text)
@@ -205,7 +237,8 @@ export class GameTracker {
     }
 
     const sans = extractSanMoves(container)
-    dbg(`[FEN-SOURCE] movelist — ${sans.length} moves read | turn will come from chess.js`)
+    const lastSan = sans.length > 0 ? sans[sans.length - 1] : "none"
+    dbg(`[FEN-SOURCE] [${new Date().toISOString()}] movelist — ${sans.length} moves read | last SAN: ${lastSan} | turn will come from chess.js`)
 
     // ── Starting position (0 moves played) ──
     if (sans.length === 0) {
