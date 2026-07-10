@@ -391,7 +391,14 @@ const ChessAssistantOverlay = () => {
     const fen = resolveFen()
     if (!fen) return
 
-    if (fen === lastFenRef.current) return  // Position unchanged
+    if (fen === lastFenRef.current) {
+      if (isDebug()) {
+        const ts = new Date().toISOString()
+        const { src, plies, lastSan, turnSrc } = traceMetaRef.current
+        console.log(`[TRACE-SKIP] t=${ts} reason=unchanged-fen src=${src} plies=${plies} lastSan=${lastSan} turnSrc=${turnSrc}`)
+      }
+      return  // Position unchanged
+    }
     lastFenRef.current = fen
     setCurrentFen(fen)
     resetAnalysis()

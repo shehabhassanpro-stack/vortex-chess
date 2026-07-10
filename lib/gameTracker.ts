@@ -203,6 +203,7 @@ export class GameTracker {
   private lastMoveSig   = ""     // last-SAN cache key: prevents stale hits on takeback+new move
   private lastFen       = ""
   private failedReplayCount = 0
+  private lastMissingListWarnTime = 0
   private readonly options: GameTrackerOptions
 
   constructor(options: GameTrackerOptions = {}) {
@@ -226,7 +227,11 @@ export class GameTracker {
 
     // No move-list element at all (e.g. /puzzles) → caller uses geometric
     if (!container) {
-      this.warn("No move list element — caller should use geometric fallback")
+      const now = Date.now()
+      if (now - this.lastMissingListWarnTime > 30000) {
+        this.warn("No move list element — caller should use geometric fallback")
+        this.lastMissingListWarnTime = now
+      }
       return null
     }
 
