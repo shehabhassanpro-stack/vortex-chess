@@ -1,5 +1,6 @@
 import React from "react"
 import type { GameContext } from "../../../domain/types"
+import { STRICT_BOT_ONLY_MODE } from "../../../core/constants"
 
 export interface FairPlayBannerProps {
   gameContext: GameContext
@@ -23,8 +24,9 @@ export const FairPlayBanner: React.FC<FairPlayBannerProps> = ({ gameContext, isA
         lineHeight: 1.4,
       }}
     >
-      ⛔ Analysis disabled in live human games. Vortex is restricted to Bot/Computer practice games
-      only.
+      {STRICT_BOT_ONLY_MODE
+        ? "⛔ Analysis disabled in live human games. Vortex is restricted to Bot/Computer practice games only."
+        : "⚠️ Using analysis in live games violates Chess.com Fair Play policy"}
     </div>
   )
 }

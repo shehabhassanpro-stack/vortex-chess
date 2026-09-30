@@ -1,5 +1,6 @@
 import React from "react"
 import type { BrilliantResult, TimingRecommendation } from "../../../domain/types"
+import { STRICT_BOT_ONLY_MODE } from "../../../core/constants"
 
 export interface EngineMetricsProps {
   evaluation: string
@@ -43,7 +44,7 @@ export const EngineMetrics: React.FC<EngineMetricsProps> = ({
           </span>
         ) : complianceBlocked ? (
           <span style={{ color: "#f85149", fontWeight: 600, fontSize: "12px" }}>
-            Blocked (Bots Only)
+            {STRICT_BOT_ONLY_MODE ? "Blocked (Bots Only)" : "Blocked (Live Game)"}
           </span>
         ) : !isActive ? (
           <span style={{ color: "#8b949e", fontStyle: "italic", fontSize: "12px" }}>

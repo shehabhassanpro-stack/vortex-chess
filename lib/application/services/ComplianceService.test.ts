@@ -3,12 +3,12 @@ import { ComplianceService } from "./ComplianceService"
 import type { IGameContextProvider } from "../../domain/ports/IGameContextProvider"
 
 describe("ComplianceService", () => {
-  test("live context is strictly blocked with warning even if forced (bots-only constraint)", () => {
+  test("when strictBotOnly is true: live context is strictly blocked even if forced", () => {
     const mockContext: IGameContextProvider = {
       getContext: vi.fn().mockReturnValue("live"),
       isAnalysisPermitted: vi.fn().mockReturnValue(false),
     }
-    const service = new ComplianceService(mockContext)
+    const service = new ComplianceService(mockContext, true)
     const status = service.check(false)
     expect(status.showWarning).toBe(true)
     expect(status.blocked).toBe(true)
@@ -17,6 +17,18 @@ describe("ComplianceService", () => {
     // Hard constraint: forced override also remains blocked in live games
     const forcedStatus = service.check(true)
     expect(forcedStatus.blocked).toBe(true)
+  })
+
+  test("when strictBotOnly is false: live context permits analysis when permitted", () => {
+    const mockContext: IGameContextProvider = {
+      getContext: vi.fn().mockReturnValue("live"),
+      isAnalysisPermitted: vi.fn().mockReturnValue(true),
+    }
+    const service = new ComplianceService(mockContext, false)
+    const status = service.check(false)
+    expect(status.showWarning).toBe(true)
+    expect(status.blocked).toBe(false)
+    expect(status.context).toBe("live")
   })
 
   test("home context without force is blocked", () => {
