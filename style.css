@@ -3,7 +3,14 @@
 .popup-container {
   width: 300px;
   padding: 20px 24px;
-  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
+  font-family:
+    "Segoe UI",
+    -apple-system,
+    BlinkMacSystemFont,
+    Roboto,
+    Helvetica,
+    Arial,
+    sans-serif;
   background: linear-gradient(145deg, #1a1a2e, #16213e);
   color: #e0e0e0;
   border-radius: 0;
@@ -27,7 +34,7 @@
   margin: 0;
   font-size: 18px;
   font-weight: 700;
-  color: #4CAF50;
+  color: #4caf50;
   letter-spacing: 0.5px;
 }
 
@@ -50,13 +57,13 @@
 }
 
 .status-dot.ready {
-  background-color: #4CAF50;
-  box-shadow: 0 0 6px #4CAF50;
+  background-color: #4caf50;
+  box-shadow: 0 0 6px #4caf50;
 }
 
 .status-dot.loading {
-  background-color: #FFC107;
-  box-shadow: 0 0 6px #FFC107;
+  background-color: #ffc107;
+  box-shadow: 0 0 6px #ffc107;
   animation: pulse 1.2s ease-in-out infinite;
 }
 
@@ -66,8 +73,13 @@
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
 }
 
 /* Toggle Button */
@@ -95,12 +107,12 @@
 }
 
 .toggle-btn.inactive {
-  background: linear-gradient(135deg, #43A047, #2E7D32);
+  background: linear-gradient(135deg, #43a047, #2e7d32);
   color: #fff;
 }
 
 .toggle-btn.inactive:hover {
-  background: linear-gradient(135deg, #4CAF50, #388E3C);
+  background: linear-gradient(135deg, #4caf50, #388e3c);
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(67, 160, 71, 0.35);
 }

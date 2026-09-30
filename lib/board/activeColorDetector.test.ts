@@ -1,13 +1,13 @@
-import { describe, test, expect, beforeEach } from 'vitest'
-import { detectActiveColorGeometric } from './content'
+import { describe, test, expect, beforeEach } from "vitest"
+import { detectActiveColorGeometric } from "./activeColorDetector"
 
 describe("detectActiveColorGeometric", () => {
   beforeEach(() => {
-    document.body.innerHTML = ''
+    document.body.innerHTML = ""
     // Default context mock
-    Object.defineProperty(window, 'location', {
-      value: { pathname: '/analysis' },
-      writable: true
+    Object.defineProperty(window, "location", {
+      value: { pathname: "/analysis" },
+      writable: true,
     })
   })
 
@@ -30,9 +30,9 @@ describe("detectActiveColorGeometric", () => {
       [null, null, null, null, null, null, null, null],
       [null, null, null, null, null, null, null, null],
       [null, null, null, null, null, null, null, null],
-      ["P", null, null, null, null, null, null, null]
+      ["P", null, null, null, null, null, null, null],
     ] // this encodes to a different string
-    
+
     const result = detectActiveColorGeometric(currentBoard, prevSig, "w", false)
     expect(result.turn).toBe("b") // board changed, so turn flips from w to b
     expect(result.reliable).toBe(true)
@@ -47,10 +47,10 @@ describe("detectActiveColorGeometric", () => {
       [null, null, null, null, null, null, null, null],
       [null, null, null, null, null, null, null, null],
       [null, null, null, null, null, null, null, null],
-      [null, null, null, null, null, null, null, "P"]
+      [null, null, null, null, null, null, null, "P"],
     ]
     // Mock the encoding logic for the test to match prevSig
-    const prevSig = boardArr.map(row => row.map(c => c ?? ".").join("")).join("|")
+    const prevSig = boardArr.map((row) => row.map((c) => c ?? ".").join("")).join("|")
     const result = detectActiveColorGeometric(boardArr, prevSig, "b", false)
     expect(result.turn).toBe("b") // board unchanged, turn stays b
     expect(result.reliable).toBe(true)
@@ -64,11 +64,11 @@ describe("detectActiveColorGeometric", () => {
   })
 
   test("Strategy 4: Board Orientation (Task 1) - puzzle flipped", () => {
-    Object.defineProperty(window, 'location', {
-      value: { pathname: '/puzzles' },
-      writable: true
+    Object.defineProperty(window, "location", {
+      value: { pathname: "/puzzles" },
+      writable: true,
     })
-    
+
     // Flipped board -> Black's turn
     const result = detectActiveColorGeometric([], "", "unknown", true)
     expect(result.turn).toBe("b")
@@ -76,9 +76,9 @@ describe("detectActiveColorGeometric", () => {
   })
 
   test("Strategy 5: first extraction (prevSig='') → piece count strategy", () => {
-    Object.defineProperty(window, 'location', {
-      value: { pathname: '/unknown' },
-      writable: true
+    Object.defineProperty(window, "location", {
+      value: { pathname: "/unknown" },
+      writable: true,
     })
     const startBoard = [
       ["r", "n", "b", "q", "k", "b", "n", "r"],
@@ -88,7 +88,7 @@ describe("detectActiveColorGeometric", () => {
       [null, null, null, null, null, null, null, null],
       [null, null, null, null, null, null, null, null],
       ["P", "P", "P", "P", "P", "P", "P", "P"],
-      ["R", "N", "B", "Q", "K", "B", "N", "R"]
+      ["R", "N", "B", "Q", "K", "B", "N", "R"],
     ]
     const result = detectActiveColorGeometric(startBoard, "", "unknown", false)
     expect(result.turn).toBe("unknown") // tied piece count = unknown
@@ -96,9 +96,9 @@ describe("detectActiveColorGeometric", () => {
   })
 
   test("Strategy 5: unbalanced piece count → unreliable turn", () => {
-    Object.defineProperty(window, 'location', {
-      value: { pathname: '/unknown' },
-      writable: true
+    Object.defineProperty(window, "location", {
+      value: { pathname: "/unknown" },
+      writable: true,
     })
     const board = [
       ["r", "n", "b", "q", "k", "b", "n", "r"], // 8 black
@@ -108,7 +108,7 @@ describe("detectActiveColorGeometric", () => {
       [null, null, null, null, null, null, null, null],
       [null, null, null, null, null, null, null, null],
       ["P", "P", "P", "P", "P", "P", "P", "P"], // 8 white
-      ["R", "N", "B", "Q", "K", "B", "N", "R"] // 8 white
+      ["R", "N", "B", "Q", "K", "B", "N", "R"], // 8 white
     ]
     const result = detectActiveColorGeometric(board, "", "unknown", false)
     expect(result.turn).toBe("b") // 16 white > 8 black -> Black has fewer pieces, so it's Black's turn

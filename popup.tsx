@@ -1,40 +1,43 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState, useMemo } from "react"
+import { ChromeStorageAdapter } from "./lib/infrastructure/adapters/ChromeStorageAdapter"
 import "./style.css"
 
 function IndexPopup() {
   const [enabled, setEnabled] = useState(true)
   const [engineStatus, setEngineStatus] = useState<"loading" | "ready" | "error">("loading")
+  const storage = useMemo(() => new ChromeStorageAdapter(), [])
 
-  // Sync initial state and listen for changes
   useEffect(() => {
-    // Load saved state
-    chrome.storage.local.get(["analysisEnabled"], (result) => {
-      if (result.analysisEnabled !== undefined) {
-        setEnabled(result.analysisEnabled)
+    // Load saved state from storage adapter
+    storage.get<boolean>("analysisEnabled").then((val) => {
+      if (val !== undefined) {
+        setEnabled(val)
       }
     })
 
     // Check engine status
-    chrome.runtime.sendMessage({ type: "INIT_ENGINE" }, (response) => {
-      if (chrome.runtime.lastError) {
-        setEngineStatus("error")
-      } else if (response?.status === "ok") {
-        setEngineStatus("ready")
-      } else {
-        setEngineStatus("error")
-      }
-    })
-  }, [])
+    if (typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
+      chrome.runtime.sendMessage({ type: "INIT_ENGINE" }, (response) => {
+        if (chrome.runtime.lastError) {
+          setEngineStatus("error")
+        } else if (response?.status === "ok") {
+          setEngineStatus("ready")
+        } else {
+          setEngineStatus("error")
+        }
+      })
+    }
+  }, [storage])
 
   const toggleEnabled = () => {
     const newState = !enabled
     setEnabled(newState)
 
-    // Persist to storage so content script can read it
-    chrome.storage.local.set({ analysisEnabled: newState })
+    // Persist to storage
+    storage.set("analysisEnabled", newState)
 
-    // Notify active tab
-    if (!newState) {
+    // Notify background/engine
+    if (!newState && typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
       chrome.runtime.sendMessage({ type: "STOP" })
     }
   }
@@ -43,8 +46,8 @@ function IndexPopup() {
     <div className="popup-container">
       {/* Header */}
       <div className="popup-header">
-        <span className="popup-icon">♟</span>
-        <h2>Chess Helper AI</h2>
+        <span className="popup-icon">⚡</span>
+        <h2>Vortex</h2>
       </div>
 
       {/* Engine Status */}
@@ -53,24 +56,20 @@ function IndexPopup() {
         <span>
           Engine:{" "}
           {engineStatus === "loading"
-            ? "Loading..."
+            ? "Initializing..."
             : engineStatus === "ready"
-            ? "Stockfish Ready"
-            : "Error"}
+              ? "Vortex Engine Active"
+              : "Error"}
         </span>
       </div>
 
       {/* Toggle Button */}
-      <button
-        className={`toggle-btn ${enabled ? "active" : "inactive"}`}
-        onClick={toggleEnabled}>
+      <button className={`toggle-btn ${enabled ? "active" : "inactive"}`} onClick={toggleEnabled}>
         {enabled ? "⏸ Disable Analysis" : "▶ Enable Analysis"}
       </button>
 
       {/* Info */}
-      <p className="popup-info">
-        Analysis is {enabled ? "active" : "paused"} on Chess.com and Lichess.
-      </p>
+      <p className="popup-info">Analysis is {enabled ? "active" : "paused"} on Chess.com.</p>
     </div>
   )
 }

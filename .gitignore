@@ -1,4 +1,37 @@
+# Dependencies & Build
 node_modules/
 build/
 .plasmo/
 *.tsbuildinfo
+
+# Large binary assets — download from official Stockfish WASM releases
+# https://github.com/nicfv/Stockfish/releases
+assets/stockfish.wasm
+assets/icon.png
+
+# Environment & Secrets
+.env
+.env.*
+*.pem
+*.key
+
+# Editor & IDE files
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS & System files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
