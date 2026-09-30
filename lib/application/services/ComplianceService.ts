@@ -13,9 +13,14 @@ export class ComplianceService {
   check(isForced: boolean): ComplianceStatus {
     const context = this.contextProvider.getContext()
     const permitted = this.contextProvider.isAnalysisPermitted(context)
+    const isLive = context === "live"
+
+    // Hard Constraint: Live human games are strictly blocked even if forced.
+    const blocked = isLive || (!permitted && !isForced)
+
     return {
-      blocked: !permitted && !isForced,
-      showWarning: context === "live",
+      blocked,
+      showWarning: isLive,
       context,
     }
   }

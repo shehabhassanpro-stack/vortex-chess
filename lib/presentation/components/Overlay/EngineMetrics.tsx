@@ -43,7 +43,7 @@ export const EngineMetrics: React.FC<EngineMetricsProps> = ({
           </span>
         ) : complianceBlocked ? (
           <span style={{ color: "#f85149", fontWeight: 600, fontSize: "12px" }}>
-            Blocked (Live Game)
+            Blocked (Bots Only)
           </span>
         ) : !isActive ? (
           <span style={{ color: "#8b949e", fontStyle: "italic", fontSize: "12px" }}>

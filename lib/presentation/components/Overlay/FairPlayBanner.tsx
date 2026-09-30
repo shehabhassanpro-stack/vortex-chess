@@ -20,9 +20,11 @@ export const FairPlayBanner: React.FC<FairPlayBannerProps> = ({ gameContext, isA
         fontSize: "10px",
         color: "#f85149",
         textAlign: "center",
+        lineHeight: 1.4,
       }}
     >
-      ⚠️ Using analysis in live games violates Chess.com Fair Play policy
+      ⛔ Analysis disabled in live human games. Vortex is restricted to Bot/Computer practice games
+      only.
     </div>
   )
 }

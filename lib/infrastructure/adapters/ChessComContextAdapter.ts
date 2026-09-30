@@ -13,6 +13,9 @@ export class ChessComContextAdapter implements IGameContextProvider {
   }
 
   isAnalysisPermitted(context: GameContext): boolean {
-    return context !== "home"
+    // Practice & Bot-Only Constraint:
+    // Analysis is strictly permitted against computer bots, puzzles, and analysis reviews.
+    // Live human multiplayer matches are strictly prohibited.
+    return context === "computer" || context === "puzzle" || context === "analysis"
   }
 }
