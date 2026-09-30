@@ -1,6 +1,12 @@
 # Vortex — Educational Chess Position Analysis & Training Assistant
 
-An open-source educational Chrome extension providing real-time chess position analysis and tactical training powered by **Stockfish WASM**, built with **Clean Architecture** and **React**.
+[![Fair Play](https://img.shields.io/badge/Fair_Play-Strictly_Bot_Only-success.svg)](#-fair-play--built-in-bot-only-enforcement)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Stockfish](https://img.shields.io/badge/Engine-Stockfish_16_WASM-orange.svg)](https://stockfishchess.org)
+[![Tests](https://img.shields.io/badge/Tests-123_Passed-brightgreen.svg)](#automated-testing--quality)
+[![Architecture](https://img.shields.io/badge/Architecture-Clean_%26_Hexagonal-purple.svg)](ARCHITECTURE.md)
+
+An open-source educational Chrome/Edge extension providing real-time chess position analysis and tactical training powered by **Stockfish WASM**, built with **Clean Architecture** and **React**.
 
 ---
 
@@ -16,7 +22,8 @@ An open-source educational Chrome extension providing real-time chess position a
 
 ## Key Features
 
-- **Local Stockfish WASM Engine** — High-performance chess evaluation running entirely locally in your browser using WebAssembly and Chrome Manifest V3 Offscreen Documents (no external servers or cloud dependencies).
+- **Hard-Coded Bot-Only Guard** — Architectural compliance guard that programmatically disables engine analysis on all live games against human players. Operates exclusively in solo bot and training practice modes.
+- **Local Stockfish WASM Engine** — High-performance chess evaluation running entirely locally in your browser using WebAssembly and Chrome/Edge Manifest V3 Offscreen Documents (no external servers or cloud dependencies).
 - **Clean Architecture & Hexagonal Design** — Strict separation between Domain, Application, Infrastructure, and Presentation layers adhering to SOLID principles.
 - **Calibrated Human Strength Simulation** — MultiPV candidate collection combined with a calibrated **Boltzmann Softmax probability distribution** ($T = 5$ to $280$) and a **Tactical Sanity Guard** to realistically simulate play across skill tiers (~800 to 2500+ Elo).
 - **Brilliant Move Detector ($!!$)** — Identifies tactical material sacrifices that lead to decisive positional advantages, including multi-ply PV sequence anticipation.
@@ -157,6 +164,21 @@ $$P(\text{move}_i) = \frac{\exp\left(-\frac{\Delta \text{cp}_i}{T}\right)}{\sum_
   - **Maximum**: Pure uncapped Stockfish (>99% accuracy)
 
 A **Tactical Sanity Guard** protects against immediate checkmates and hanging high-value pieces without compensation, ensuring errors feel natural for each Elo tier.
+
+---
+
+## 🛡️ Fair Play & Built-in Bot-Only Enforcement
+
+To preserve fair play across online chess platforms and completely prevent unintended competitive abuse, Vortex implements an **architectural compliance constraint** directly inside the Application and Infrastructure layers:
+
+1. **Context Guard (`ChessComContextAdapter` & `ComplianceService`)**:
+   - Live multiplayer games against humans (`/play/online`, `/game/live`) are **hard-blocked** at the use-case dispatch level.
+   - Analysis execution is strictly permitted only in solo training and practice environments:
+     - 🤖 **Computer Bots** (`/play/computer`)
+     - 🧩 **Tactical Puzzles** (`/puzzles`)
+     - 🔍 **Post-Match Game Review & Analysis** (`/analysis`)
+2. **Fail-Safe UI**:
+   - When any live multiplayer game is detected, the HUD automatically halts evaluation, hides the best-move arrow overlays, displays a compliance notice (`Blocked (Bots Only)`), and disables manual analysis override.
 
 ---
 
